@@ -1,0 +1,250 @@
+---
+title: "NY PD Shooting Analysis"
+author: "P.Papa"
+date: "2024-10-01"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Load libraries
+```{r library, message=FALSE, warning=FALSE}
+install.packages('readr', dependencies = TRUE, repos='http://cran.rstudio.com/')
+install.packages('tidyverse', dependencies = TRUE, repos='http://cran.rstudio.com/')
+install.packages('lubridate', dependencies = TRUE, repos='http://cran.rstudio.com/')
+install.packages('ggplot2', dependencies = TRUE, repos='http://cran.rstudio.com/')
+install.packages('dplyr', dependencies = TRUE, repos='http://cran.rstudio.com/')
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+library(vcd)
+```
+
+## Get current data
+```{r load}
+ url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+nyc_data_orig <- read_csv(url_in)
+```
+
+## Tidy and transform data 
+### Remove unnecessary data
+```{r clean data}
+nyc_data <- nyc_data_orig %>% select(-PRECINCT, -JURISDICTION_CODE,-X_COORD_CD, -Y_COORD_CD, -Latitude, -Longitude, -Lon_Lat)
+```
+
+### Change data type
+
+* **INCIDENT_KEY** to be treated as a string.
+* **BORO** to be treated as a factor.
+* **PERP_AGE_GROUP** to be treated as a factor.
+* **PERP_SEX** to be treated as a factor.
+* **PERP_RACE** to be treated as a factor.
+* **VIC_AGE_GROUP** to be treated as a factor.
+* **VIC_SEX** to be treated as a factor.
+* **VIC_RACE** to be treated as a factor.
+
+
+```{r tidy and transform data}
+# Remove anomalies in the data values
+nyc_data = subset(nyc_data, VIC_AGE_GROUP!="1022" & PERP_AGE_GROUP!="1020" & PERP_AGE_GROUP!="940" & PERP_AGE_GROUP!="224" & PERP_AGE_GROUP != "1028" & PERP_AGE_GROUP != "(null)")
+
+# Replace 'UNKNOWN' and 'U' with 'Unknown' and standardize missing values to NA
+nyc_data$PERP_AGE_GROUP <- recode(nyc_data$PERP_AGE_GROUP, 'UNKNOWN' = 'Unknown')
+nyc_data$PERP_SEX <- recode(nyc_data$PERP_SEX, 'U' = 'Unknown')
+nyc_data$PERP_RACE <- recode(nyc_data$PERP_RACE, 'UNKNOWN' = 'Unknown')
+nyc_data$VIC_SEX <- recode(nyc_data$VIC_SEX, 'U' = 'Unknown')
+nyc_data$VIC_RACE <- recode(nyc_data$VIC_RACE, 'UNKNOWN' = 'Unknown')
+
+# Convert variables to appropriate data types
+nyc_data$INCIDENT_KEY <- as.character(nyc_data$INCIDENT_KEY)
+nyc_data$BORO <- as.factor(nyc_data$BORO)
+nyc_data$PERP_AGE_GROUP <- as.factor(nyc_data$PERP_AGE_GROUP)
+nyc_data$PERP_SEX <- as.factor(nyc_data$PERP_SEX)
+nyc_data$PERP_RACE <- as.factor(nyc_data$PERP_RACE)
+nyc_data$VIC_AGE_GROUP <- as.factor(nyc_data$VIC_AGE_GROUP)
+nyc_data$VIC_SEX <- as.factor(nyc_data$VIC_SEX)
+nyc_data$VIC_RACE <- as.factor(nyc_data$VIC_RACE)
+
+# Remove unkwnown
+nyc_data[nyc_data == 'Unknown'] <- NA
+nyc_data[nyc_data == 'UNKNOWN'] <- NA
+nyc_data <- na.omit(nyc_data)
+
+# Drop unused factor levels
+nyc_data <- nyc_data %>%
+  mutate(across(where(is.factor), droplevels))
+
+# Remove rows with missing values in key variables
+nyc_data_clean <- nyc_data %>%
+  filter(complete.cases(PERP_AGE_GROUP, PERP_SEX, PERP_RACE,
+                        VIC_AGE_GROUP, VIC_SEX, VIC_RACE))
+
+# Return summary statistics
+summary(nyc_data_clean)
+```
+
+## Data visualization
+### Perpetrators age distribution
+```{r perp-age-distribution}
+summary(nyc_data_clean$PERP_AGE_GROUP)
+
+ggplot(nyc_data_clean, aes(x = PERP_AGE_GROUP)) +
+  geom_bar() +
+  xlab("Perpetrators' Age Group") +
+  ylab("Count") +
+  theme_minimal() +
+  coord_flip()
+```
+
+### Victims age distribution
+```{r vict-age-distribution}
+ggplot(nyc_data_clean, aes(x = VIC_AGE_GROUP)) +
+  geom_bar() +
+  xlab("Victims' Age Group") +
+  ylab("Count") +
+  theme_minimal() +
+  coord_flip()
+```
+
+### Sex and Race distribution
+```{r sex-and-race-distribution}
+  # Perpetrators' Sex
+  print("Perpetrators' Sex Distribution:")
+  table(nyc_data_clean$PERP_SEX)
+  
+  # Victims' Sex
+  print("Victims' Sex Distribution:")
+  table(nyc_data_clean$VIC_SEX)
+  
+  # Perpetrators' Race
+  print("Perpetrators' Race Distribution:")
+  table(nyc_data_clean$PERP_RACE)
+  
+  # Victims' Race
+  print("Victims' Race Distribution:")
+  table(nyc_data_clean$VIC_RACE)
+```
+
+
+## Analysis of relationships between variables
+```{r fix levels for VIC_SEX and PERP_SEX}
+
+# Levels of variable VIC_SEX
+levels(nyc_data_clean$VIC_SEX)
+
+# Levels of variable PERP_SEX
+levels(nyc_data_clean$PERP_SEX)
+
+nyc_data_clean$VIC_SEX <- relevel(nyc_data_clean$VIC_SEX, ref = "M")
+
+# Levels of variable VIC_SEX
+levels(nyc_data_clean$VIC_SEX)
+
+# Levels of variable PERP_SEX
+levels(nyc_data_clean$PERP_SEX)
+
+```
+
+
+
+### Cross-tabulation of Perpetrators’ and Victims’ Sex
+```{r sex-cross-tabulation}
+sex_table_p <- table(nyc_data_clean$PERP_SEX, nyc_data_clean$VIC_SEX)
+print("Cross-tabulation of Perpetrators' and Victims' Sex:")
+sex_table_p
+```
+
+### Cross-tabulation of Perpetrators’ and Victims’ Age Groups
+```{r age-cross-tabulation}
+age_table <- table(nyc_data_clean$PERP_AGE_GROUP, nyc_data_clean$VIC_AGE_GROUP)
+print("Cross-tabulation of Perpetrators' and Victims' Age Groups:")
+age_table
+```
+
+### Heatmap of Age Group Interactions
+```{r age-heatmap}
+ggplot(nyc_data_clean, aes(x = PERP_AGE_GROUP, y = VIC_AGE_GROUP)) +
+  geom_bin2d() +
+  xlab("Perpetrators' Age Group") +
+  ylab("Victims' Age Group") +
+  theme_minimal() +
+  scale_fill_gradient(low = "lightblue", high = "darkblue")
+
+```
+
+### Distribution by Borough
+```{r location-plot}
+ggplot(nyc_data_clean, aes(x = BORO)) +
+  geom_bar() +
+  xlab("Borough") +
+  ylab("Number of Homicides") +
+  theme_minimal()
+
+```
+
+## Logistic Regression model
+I first ensure that VIC_SEX (victim’s sex) is correctly formatted as a factor variable suitable for logistic regression. This variable is binary, representing two categories (e.g., “M” for male and “F” for female).
+Then I use glm function for modeling the probability of the victim being of a certain sex based on perpetrator characteristics.
+
+```{r logistic-regression}
+# Ensure VIC_SEX is a binary factor for logistic regression
+nyc_data_clean$VIC_SEX <- factor(nyc_data_clean$VIC_SEX)
+
+# Fit the model
+model <- glm(VIC_SEX ~ PERP_SEX + PERP_AGE_GROUP + PERP_RACE,
+             data = nyc_data_clean, family = "binomial")
+summary(model)
+```
+
+### Bias reduction
+Since in my country there are many crimes committed by men targeting women, I have eliminated the potential bias and adjusted the model to correctly calculate the relationship between the perpetrator’s characteristics and the victim’s sex.
+
+### An additional investigation
+Since my initial hypothesis is not confirmed by the data, I would like to also explore the opposite case to see if there is any inverse relationship.
+
+```{r mosaic}
+mosaic(~ PERP_SEX + VIC_SEX, data = nyc_data_clean, shade = TRUE,
+       legend = TRUE, gp = shading_max,
+       main = "Relation between sex of perpetrator and victim",
+       xlab = "Sex of Perpetrator",
+       ylab = "Sex of Victim")
+
+```
+
+``` {r logistic-regression-2}
+# Set "M" (male) as reference level for VIC_SEX
+nyc_data_clean$VIC_SEX <- relevel(nyc_data_clean$VIC_SEX, ref = "M")
+
+# Check that PERP_SEX has "F" (Female) as reference level
+nyc_data_clean$PERP_SEX <- relevel(nyc_data_clean$PERP_SEX, ref = "F")
+
+# Regression model
+model <- glm(VIC_SEX ~ PERP_SEX, data = nyc_data_clean, family = binomial)
+
+# Visualize the model
+summary(model)
+```
+## Conclusions
+
+### Final Summary
+
+* Female Perpetrators:
+** More likely to have female victims
+* Perpetrators Aged 45-64:
+** More likely to have female victims compared to younger perpetrators.
+*	Perpetrator’s Race:
+** Did not show a significant effect on the victim’s sex in the current model.
+
+The results suggest significant differences in the victim’s sex based on the perpetrator’s sex and age. This information can be useful for:
+
+*	Developing Prevention Programs: Targeted at specific demographic groups.
+* Informing Law Enforcement: To better understand crime dynamics and allocate resources.
+* Promoting Further Research: Exploring other variables and delving deeper into the underlying causes of these relationships.
+
+
+## Resources
+
+- https://data.cityofnewyork.us/
