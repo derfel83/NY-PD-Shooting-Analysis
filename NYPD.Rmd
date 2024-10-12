@@ -247,4 +247,6 @@ The results suggest significant differences in the victim’s sex based on the p
 
 ## Resources
 
-- https://data.cityofnewyork.us/
+* Data from NYPD: https://data.cityofnewyork.us/
+* Github project: https://github.com/derfel83/NY-PD-Shooting-Analysis
+
